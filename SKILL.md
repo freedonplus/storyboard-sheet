@@ -44,6 +44,7 @@ description: 把任意故事、脚本、短剧段落拆成镜头单，逐格生�
 | [references/continuity.md](references/continuity.md) | 衔接卡：空间蓝图、轴线规则、机位表、尾态首态接力、参考图链、比例锚、溯源回写、自查清单 |
 | [references/output-spec.md](references/output-spec.md) | 格数与比例公式、分辨率、叠字版式、镜头单 JSON 字段规范（含 anchors 与溯源字段） |
 | [assets/shots.example.json](assets/shots.example.json) | 镜头单 JSON 完整示例（8 格 + 标题卡，含 anchors/cameras/溯源字段） |
+| [assets/demo.jpg](assets/demo.jpg) | 示例成品：上面这份镜头单拼出的整板预览（8 镜 + 标题卡，3×3，长边 2560 的 JPG） |
 | `scripts/validate-shots.ps1` | 镜头单静态校验：字段、接力、锚点原句包含、机位引用、帧文件存在性 |
 | `scripts/build-board.ps1` | 拼板叠字：读取 JSON，输出整板 PNG 与 JPG 预览 |
 
@@ -61,3 +62,5 @@ description: 把任意故事、脚本、短剧段落拆成镜头单，逐格生�
 ```
 
 拼板脚本按格子中心裁切填充（cover），不拉伸画面；帧尺寸与格子比例不一致时不会变形。
+
+示例成品见 [assets/demo.jpg](assets/demo.jpg)：8 镜 + 标题卡的整板预览，对应镜头单是 [assets/shots.example.json](assets/shots.example.json)，先跑 `validate-shots.ps1` 通过后再按同一份 JSON 复现即可得到同结构的板。
