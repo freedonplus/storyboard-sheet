@@ -36,6 +36,7 @@
 
 ```json
 {
+  "schema": 2,
   "title": "片名",
   "subtitle": "分镜故事板  STORYBOARD",
   "meta": ["8 SHOTS / 15s / 16:9", "冷蓝月光主光 / 35mm 胶片颗粒"],
@@ -53,10 +54,16 @@
     "scene": "场景句：地点、材质、远景层次",
     "blueprint": "空间蓝图句：以场景固定物为坐标原点的全组坐标",
     "blocking": "站位锚点句：每个角色相对固定物的距离/侧位/朝向",
-    "axis": "轴线与左右定则句：机位在哪一侧、谁在画面哪边",
+    "axis": "轴线与左右定则句：机位在哪一侧",
     "lighting": "光位句：主光方向＋色温＋辅光，全组固定",
     "props": "比例锚＋状态卡句：固定尺寸物、可变对象的真实语义状态",
-    "negative": "禁止项句：文字/水印/边框＋题材追加项"
+    "negative": "禁止项总句（兼容旧版，仍会校验）",
+    "negative_parts": {
+      "base": "基础负向：文字、字幕、水印、编号、边框、卡通化、题材禁忌",
+      "anatomy": "解剖负向：多余手臂手指腿爪、重复肢体、肢体穿插、身体融合、头身错位",
+      "geometry": "几何负向：道具或背景物件穿过身体、衣物穿身、悬浮、足底离地、影子朝向矛盾",
+      "separation": "分离负向：两主体粘连、轮廓融合、共用一团阴影"
+    }
   },
 
   "cameras": [
@@ -72,6 +79,9 @@
       "camera": "C1",
       "framing": "大远景",
       "cast": ["忍者"],
+      "screen_side": { "忍者": "center" },
+      "ref_binding": [],
+      "reverse_shot": false,
       "cut_in": "硬切：片头起幅",
       "cut_out": "动作切：接住蹬离屋脊的一帧",
       "scene_break": false,
@@ -106,6 +116,10 @@
 - `in_state` / `out_state`：入格/出格状态。第 N 格 `out_state` 与第 N+1 格 `in_state` 必须**逐字相等**；位置、朝向、动作相位、接触点、表情强度五项落字。
 - `scene_break`：换场断链标记。为 `true` 时本格 `in_state` 不要求与上一格 `out_state` 相同，参考图链也在此断开、重开首格。不允许默默断链。
 - `cut_in` / `cut_out`：切点类型 + 接住什么，见 [continuity.md](continuity.md#六切点类型写清接住什么)。
+- `screen_side`：本格**真正可见**的角色在画面里的侧位，值只有 `left`／`center`／`right`，键必须在 `cast` 里；Prompt 必须原句含“{角色}在画面左侧／中部／右侧”。同场相邻格中两个都出镜的角色，左右次序不许翻转，除非该格 `reverse_shot: true`（校验脚本按次序符号比对，翻转直接 FAIL）。
+- `reverse_shot`：反打／过肩格显式标记。仅允许成对出现，下一格必须切回原侧位；缺省为 `false`。
+- `ref_binding`：本格参考图的槽位绑定，`[{"slot":"图片1","subject":"小狗","role":"identity"}]`。`slot` 必须与工具实际收到的图片顺序一致；`role` 用 `identity`（身份素材）或 `layout`（上一格画面／构图参考）；一槽只能绑一个主体，Prompt 必须出现该 `slot` 字样与对应“仅提供…”用途句。首格无参考图时写空数组。
+- `anchors.negative_parts`：负向四段（`base`／`anatomy`／`geometry`／`separation`），校验脚本要求每格 `prompt` 原句含全部四段；`anchors.negative` 保留兼容旧版，仍会校验。
 
 溯源字段（生成后回写，不回写不交付）：
 

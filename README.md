@@ -84,4 +84,8 @@ scripts/
 | 左右互换 | 轴线定则（`anchors.axis`），全组机位同侧 |
 | 忽大忽小 | 比例锚：场景固定尺寸物换算（`anchors.props`） |
 | 灯态穿帮 | 可变状态卡符合真实语义（continuity.md 规范表） |
+| 角色一格在左、下一格跑到右 | `screen_side` 侧位表逐格写死，同场次序/换边校验，反打必须标 `reverse_shot` |
+| 两个主体的参考搞反 | `ref_binding` 一槽一主体（`identity`/`layout` 分离），Prompt 逐槽写"图片N 仅提供…" |
+| 穿模、粘连、多肢 | 正向主体分离句（间隙＋前后遮挡＋独立接触阴影）＋ `negative_parts` 四段负向 |
+| 只写"不要穿模"却没效果 | 负向拆 `base`/`anatomy`/`geometry`/`separation` 四段，校验脚本强制每格原句包含 |
 | 无法复现 | `prompt`/`seed`/`ref`/`qa` 逐格回写，JSON 即溯源档案 |

@@ -70,6 +70,18 @@ else {
     }
 }
 
+# 负向四段（base/anatomy/geometry/separation）：缺段视为没写负向
+$negParts = Get-Prop $anchors "negative_parts"
+$negKeys = @("base", "anatomy", "geometry", "separation")
+if ($null -eq $negParts) {
+    Add-Fail "缺少 anchors.negative_parts（负向四段：base/anatomy/geometry/separation）"
+}
+else {
+    foreach ($nk in $negKeys) {
+        if (Test-Empty (Get-Prop $negParts $nk)) { Add-Fail "anchors.negative_parts.$nk 缺失或为空" }
+    }
+}
+
 $cameras = @(Get-Prop $spec "cameras")
 $cameraIds = @{}
 foreach ($c in $cameras) {
@@ -101,11 +113,15 @@ $shotIds = @{}
 $prevEnd = $null
 $prevOut = $null
 $prevId = $null
+$prevSide = @{}
+$prevRev = $false
+$prevScene = $true
 
 for ($i = 0; $i -lt $shots.Count; $i++) {
     $s = $shots[$i]
     $sid = [string](Get-Prop $s "id")
     if (Test-Empty $sid) { $sid = "#$($i + 1)" }
+    $cast = @(Get-Prop $s "cast")
 
     foreach ($k in $requiredShot) {
         if (Test-Empty (Get-Prop $s $k)) { Add-Fail "$sid 缺少字段 $k" }
@@ -143,6 +159,8 @@ for ($i = 0; $i -lt $shots.Count; $i++) {
     }
     $prevOut = [string](Get-Prop $s "out_state")
     $prevId = $sid
+    $prevSide = $sideMap
+    $prevRev = $rev
 
     # 机位引用
     $cam = [string](Get-Prop $s "camera")
@@ -202,6 +220,98 @@ for ($i = 0; $i -lt $shots.Count; $i++) {
                     Add-Fail "$sid ref 引用了不存在或排在其后的镜头: $r"
                 }
             }
+        }
+    }
+
+    # ---------- 屏幕侧位锁定（防一格在左一格跑到右） ----------
+    $sideObj = Get-Prop $s "screen_side"
+    $sideMap = @{}
+    if ($null -eq $sideObj) {
+        Add-Fail "$sid 缺少 screen_side（本格可见角色在画面的 left/center/right）"
+    }
+    else {
+        foreach ($sp in $sideObj.PSObject.Properties) {
+            $sv = [string]$sp.Value
+            if (@("left", "center", "right") -notcontains $sv) {
+                Add-Fail "$sid screen_side.$($sp.Name) 只能是 left/center/right，实为 $sv"
+            }
+            $sideMap[[string]$sp.Name] = $sv
+            if ($cast.Count -gt 0 -and ($cast -notcontains [string]$sp.Name)) {
+                Add-Fail "$sid screen_side 里的 $($sp.Name) 不在 cast 中"
+            }
+        }
+        if ($sideMap.Count -eq 0) { Add-Fail "$sid screen_side 为空（至少列一个可见角色）" }
+    }
+
+    $rev = (Get-Prop $s "reverse_shot") -eq $true
+    if ($rev -and $prevRev) { Add-Fail "$sid 连续两格都标 reverse_shot（反打必须成对，第二格应切回原侧位）" }
+    if (-not $sceneBreak -and -not $rev -and $prevSide.Count -gt 0 -and $sideMap.Count -gt 0) {
+        $rank = @{ "left" = 0; "center" = 0.5; "right" = 1 }
+        # 单角色跨格换边（左↔右）同样算翻转
+        foreach ($nm in $sideMap.Keys) {
+            $cname = [string]$nm
+            if (-not $prevSide.ContainsKey($cname)) { continue }
+            $a = [string]$prevSide[$cname]
+            $b = [string]$sideMap[$cname]
+            if ($a -ne $b -and $a -ne "center" -and $b -ne "center") {
+                Add-Fail "$sid 角色 $cname 跨格换边：上格 $a、本格 $b（确需反打请标 reverse_shot）"
+            }
+        }
+        $names = @($sideMap.Keys | Sort-Object)
+        for ($x = 0; $x -lt $names.Count; $x++) {
+            for ($y = $x + 1; $y -lt $names.Count; $y++) {
+                $a = [string]$names[$x]; $b = [string]$names[$y]
+                if (-not $prevSide.ContainsKey($a) -or -not $prevSide.ContainsKey($b)) { continue }
+                $now = $rank[$sideMap[$a]] - $rank[$sideMap[$b]]
+                $before = $rank[$prevSide[$a]] - $rank[$prevSide[$b]]
+                if ([math]::Sign($now) -ne [math]::Sign($before)) {
+                    Add-Fail "$sid 角色左右次序翻转：$a/$b 上格为 $($prevSide[$a])/$($prevSide[$b])，本格为 $($sideMap[$a])/$($sideMap[$b])（反打请标 reverse_shot）"
+                }
+            }
+        }
+    }
+
+    if (-not (Test-Empty $prompt)) {
+        $zh = @{ "left" = "左侧"; "center" = "中部"; "right" = "右侧" }
+        foreach ($nm in $sideMap.Keys) {
+            $phrase = "${nm}在画面$($zh[$sideMap[$nm]])"
+            if (-not $prompt.Contains($phrase)) { Add-Fail "$sid prompt 未含侧位句: $phrase" }
+        }
+        if ($null -ne $negParts) {
+            foreach ($nk in $negKeys) {
+                $nv = [string](Get-Prop $negParts $nk)
+                if (-not (Test-Empty $nv) -and -not $prompt.Contains($nv)) {
+                    Add-Fail "$sid prompt 未原句包含 anchors.negative_parts.$nk"
+                }
+            }
+        }
+    }
+
+    # ---------- 参考图槽位绑定（防两个主体的参考搞反） ----------
+    $rbPropInfo = $s.PSObject.Properties["ref_binding"]
+    if ($null -eq $rbPropInfo) {
+        Add-Fail "$sid 缺少 ref_binding（首格无参考图时写空数组）"
+    }
+    else {
+        $rb = @()
+        if ($null -ne $rbPropInfo.Value) { $rb = @($rbPropInfo.Value) }
+        $slotSeen = @{}
+        foreach ($item in $rb) {
+            $slot = [string](Get-Prop $item "slot")
+            $subj = [string](Get-Prop $item "subject")
+            $role = [string](Get-Prop $item "role")
+            if (Test-Empty $slot) { Add-Fail "$sid ref_binding 存在缺 slot 的项"; continue }
+            if ($slot -notmatch '^图片\d+$') { Add-Fail "$sid ref_binding slot 应写成 图片N，实为 $slot" }
+            if (Test-Empty $subj) { Add-Fail "$sid ref_binding[$slot] 缺 subject" }
+            if (@("identity", "layout") -notcontains $role) { Add-Fail "$sid ref_binding[$slot] role 只能是 identity/layout，实为 $role" }
+            if ($slotSeen.ContainsKey($slot)) { Add-Fail "$sid ref_binding slot 重复: $slot" }
+            $slotSeen[$slot] = $subj
+            if (-not (Test-Empty $prompt) -and -not $prompt.Contains($slot)) {
+                Add-Fail "$sid prompt 未出现槽位 $slot 的用途句（应写“$slot 仅提供…”）"
+            }
+        }
+        if (-not (Test-Empty $ref) -and $rb.Count -eq 0) {
+            Add-Fail "$sid ref 非空但 ref_binding 为空，参考图没绑主体"
         }
     }
 
