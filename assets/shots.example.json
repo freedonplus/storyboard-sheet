@@ -1,4 +1,6 @@
 {
+  "schema": 2,
+  "style_preset": "realistic",
   "title": "忍者屋顶潜袭",
   "subtitle": "分镜故事板  STORYBOARD",
   "meta": [
@@ -334,6 +336,5 @@
       ],
       "reverse_shot": false
     }
-  ],
-  "schema": 2
+  ]
 }

@@ -37,6 +37,7 @@
 ```json
 {
   "schema": 2,
+  "style_preset": "realistic",
   "title": "片名",
   "subtitle": "分镜故事板  STORYBOARD",
   "meta": ["8 SHOTS / 15s / 16:9", "冷蓝月光主光 / 35mm 胶片颗粒"],
@@ -120,6 +121,7 @@
 - `reverse_shot`：反打／过肩格显式标记。仅允许成对出现，下一格必须切回原侧位；缺省为 `false`。
 - `ref_binding`：本格参考图的槽位绑定，`[{"slot":"图片1","subject":"小狗","role":"identity"}]`。`slot` 必须与工具实际收到的图片顺序一致；`role` 用 `identity`（身份素材）或 `layout`（上一格画面／构图参考）；一槽只能绑一个主体，Prompt 必须出现该 `slot` 字样与对应“仅提供…”用途句。首格无参考图时写空数组。
 - `anchors.negative_parts`：负向四段（`base`／`anatomy`／`geometry`／`separation`），校验脚本要求每格 `prompt` 原句含全部四段；`anchors.negative` 保留兼容旧版，仍会校验。
+- `style_preset`：开板时选定并写死的风格预设，取值只能是 `realistic`／`line_bw`／`graphite`／`manga_tone`／`cel2d`／`guoman3d`／`aaa_cg`／`watercolor` 之一；对应四件套（质感句／色板／阴影方式／负向补充）见 [prompt-templates.md](prompt-templates.md#七风格预设表开板先问一次)。一条板只允许一个值，换风格按新任务处理。
 
 溯源字段（生成后回写，不回写不交付）：
 

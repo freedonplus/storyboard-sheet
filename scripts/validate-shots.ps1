@@ -47,6 +47,15 @@ catch {
 }
 
 # ---------- 1. 顶层与 anchors ----------
+$stylePresets = @("realistic", "line_bw", "graphite", "manga_tone", "cel2d", "guoman3d", "aaa_cg", "watercolor")
+$stylePreset = [string](Get-Prop $spec "style_preset")
+if (Test-Empty $stylePreset) {
+    Add-Fail "缺少 style_preset（开板先选风格：realistic/line_bw/graphite/manga_tone/cel2d/guoman3d/aaa_cg/watercolor）"
+}
+elseif ($stylePresets -notcontains $stylePreset) {
+    Add-Fail "style_preset 非法值: $stylePreset（可选: $($stylePresets -join '/')）"
+}
+
 $cols = Get-Prop $spec "cols"
 $rows = Get-Prop $spec "rows"
 if (Test-Empty $cols) { Add-Fail "缺少 cols" }
