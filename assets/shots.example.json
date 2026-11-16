@@ -112,7 +112,13 @@
         "忍者": "center"
       },
       "ref_binding": [],
-      "reverse_shot": false
+      "reverse_shot": false,
+      "delta": {
+        "contact": "右脚刚蹬离屋脊尽头瓦面",
+        "shift": "身体前移至屋脊尽头",
+        "phase": "起势→发力",
+        "change": "忍者位于老虎窗东侧屋脊尽头、面朝东侧矮墙、右脚刚蹬离屋脊瓦面、双手未持械、表情紧绷"
+      }
     },
     {
       "id": "SH002",
@@ -143,7 +149,13 @@
           "role": "layout"
         }
       ],
-      "reverse_shot": false
+      "reverse_shot": false,
+      "delta": {
+        "contact": "脚下几块断瓦",
+        "shift": "腾空越过两米间隙",
+        "phase": "腾空",
+        "change": "忍者身体腾空越过两道屋顶间隙中点、四肢收拢、面朝东侧矮墙、双手未持械、表情紧绷"
+      }
     },
     {
       "id": "SH003",
@@ -176,7 +188,13 @@
           "role": "layout"
         }
       ],
-      "reverse_shot": false
+      "reverse_shot": false,
+      "delta": {
+        "contact": "双膝与双肘同时砸在敌人肩背",
+        "shift": "自上而下急坠约一人高",
+        "phase": "撞击顶点",
+        "change": "忍者双膝与双肘压在敌人肩背、敌人面朝瓦面趴伏手臂摊开、忍者面朝东侧矮墙、双手未持械、表情紧绷"
+      }
     },
     {
       "id": "SH004",
@@ -208,7 +226,13 @@
           "role": "layout"
         }
       ],
-      "reverse_shot": false
+      "reverse_shot": false,
+      "delta": {
+        "contact": "从敌人背上弹起",
+        "shift": "两步跨到东侧矮墙背风面",
+        "phase": "脱离→隐蔽",
+        "change": "忍者贴东侧矮墙背风面蹲伏、身体没入墙后阴影、右手扶腰侧布囊、视线对准墙缘、呼吸压低"
+      }
     },
     {
       "id": "SH005",
@@ -240,7 +264,13 @@
           "role": "layout"
         }
       ],
-      "reverse_shot": false
+      "reverse_shot": false,
+      "delta": {
+        "contact": "半张脸探出墙缘",
+        "shift": "蹲伏原位不动",
+        "phase": "观察",
+        "change": "忍者贴东侧矮墙背风面蹲伏原位、右手已探入腰侧布囊捏住一枚手里剑、视线锁定墙外十步巡逻敌人后颈、呼吸压低"
+      }
     },
     {
       "id": "SH006",
@@ -271,7 +301,13 @@
           "role": "layout"
         }
       ],
-      "reverse_shot": false
+      "reverse_shot": false,
+      "delta": {
+        "contact": "右手自布囊抽出",
+        "shift": "手位由腰侧抬到肩侧",
+        "phase": "上械",
+        "change": "忍者贴东侧矮墙背风面蹲伏原位、右手持手里剑抬至肩侧、腕部后扣到位、视线锁定墙外十步巡逻敌人后颈、呼吸压低"
+      }
     },
     {
       "id": "SH007",
@@ -302,7 +338,13 @@
           "role": "layout"
         }
       ],
-      "reverse_shot": false
+      "reverse_shot": false,
+      "delta": {
+        "contact": "右手完成甩腕",
+        "shift": "手臂由后扣位置完成前送",
+        "phase": "出手",
+        "change": "忍者右手完成甩腕、手里剑离手飞向敌人后颈、忍者仍贴东侧矮墙背风面蹲伏原位、视线紧随飞行轨迹、呼吸压低"
+      }
     },
     {
       "id": "SH008",
@@ -334,7 +376,13 @@
           "role": "layout"
         }
       ],
-      "reverse_shot": false
+      "reverse_shot": false,
+      "delta": {
+        "contact": "手里剑没入敌人后颈护具缝隙",
+        "shift": "镜头后拉约两米",
+        "phase": "收势定格",
+        "change": "敌人后颈中剑面朝下倒地不动、手里剑没入护具缝隙、忍者仍贴东侧矮墙背风面蹲伏原位、视线确认结果、呼吸压低"
+      }
     }
   ]
 }

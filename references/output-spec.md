@@ -88,6 +88,12 @@
       "scene_break": false,
       "in_state": "入格状态（首格写起幅状态）",
       "out_state": "出格状态，下一格 in_state 必须逐字相同",
+      "delta": {
+        "contact": "本格接触点：谁碰到谁哪个部位；无接触写“无接触”",
+        "shift": "相对上一格的位移，带数字：间距三步→两步半 / 前臂各退半寸",
+        "phase": "动作相位：起势｜发力顶点｜接触｜收势｜余势｜定格",
+        "change": "本格可视结果，必须与 out_state 同文（校验器做子串比对）"
+      },
       "prompt": "提交给生图模型的完整 Prompt 原句，定稿后回写，一字不改",
       "ref": null,
       "seed": null,
@@ -115,13 +121,14 @@
 - `camera` / `framing`：本镜机位编号与景别。
 - `cast`：本格出场角色名数组（对应 `anchors.characters` 每条的名字前缀，如 `["忍者"]`）。校验时只要求出场角色的锚点句原句进 Prompt；缺省则要求全部角色锚点都出现。
 - `in_state` / `out_state`：入格/出格状态。第 N 格 `out_state` 与第 N+1 格 `in_state` 必须**逐字相等**；位置、朝向、动作相位、接触点、表情强度五项落字。
+- `delta`：**衔接必需**（本技能第一硬指标）。四个量 `contact`（接触点）／`shift`（位移，带数字）／`phase`（相位）／`change`（可视结果）缺一 FAIL；`delta.change` 必须逐字出现在本格 `out_state` 里；相邻两格 `delta` 四项全同 FAIL；`delta.contact` 未在 `prompt` 原句出现只报 WARN。规则与写法见 [continuity.md](continuity.md#十五格间推进四量表衔接的唯一硬指标)。
 - `scene_break`：换场断链标记。为 `true` 时本格 `in_state` 不要求与上一格 `out_state` 相同，参考图链也在此断开、重开首格。不允许默默断链。
 - `cut_in` / `cut_out`：切点类型 + 接住什么，见 [continuity.md](continuity.md#六切点类型写清接住什么)。
 - `screen_side`：本格**真正可见**的角色在画面里的侧位，值只有 `left`／`center`／`right`，键必须在 `cast` 里；Prompt 必须原句含“{角色}在画面左侧／中部／右侧”。同场相邻格中两个都出镜的角色，左右次序不许翻转，除非该格 `reverse_shot: true`（校验脚本按次序符号比对，翻转直接 FAIL）。
 - `reverse_shot`：反打／过肩格显式标记。仅允许成对出现，下一格必须切回原侧位；缺省为 `false`。
 - `ref_binding`：本格参考图的槽位绑定，`[{"slot":"图片1","subject":"小狗","role":"identity"}]`。`slot` 必须与工具实际收到的图片顺序一致；`role` 用 `identity`（身份素材）或 `layout`（上一格画面／构图参考）；一槽只能绑一个主体，Prompt 必须出现该 `slot` 字样与对应“仅提供…”用途句。首格无参考图时写空数组。
 - `anchors.negative_parts`：负向四段（`base`／`anatomy`／`geometry`／`separation`），校验脚本要求每格 `prompt` 原句含全部四段；`anchors.negative` 保留兼容旧版，仍会校验。
-- `style_preset`：开板时选定并写死的风格预设，取值只能是 `realistic`／`line_bw`／`graphite`／`manga_tone`／`cel2d`／`guoman3d`／`aaa_cg`／`watercolor` 之一；对应四件套（质感句／色板／阴影方式／负向补充）见 [prompt-templates.md](prompt-templates.md#七风格预设表开板先问一次)。一条板只允许一个值，换风格按新任务处理。
+- `style_preset`：**可选装饰项**，不参与衔接校验。取值只能是 `realistic`／`line_bw`／`graphite`／`manga_tone`／`cel2d`／`guoman3d`／`aaa_cg`／`watercolor` 之一；缺失时按 `realistic` 兜底并报 WARN（不阻塞开图），非法值才 FAIL。对应四件套（质感句／色板／阴影方式／负向补充）见 [prompt-templates.md](prompt-templates.md#七风格预设表可选)。一条板只允许一个值，换风格按新任务处理。
 
 溯源字段（生成后回写，不回写不交付）：
 

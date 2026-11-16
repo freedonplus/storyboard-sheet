@@ -38,6 +38,34 @@ function ConvertTo-Seconds([string]$timeText) {
     return @($s, $e)
 }
 
+# 本镜头动作段：从“本镜头：”到“出格状态：”之间，用于相邻格推进度比对
+function Get-ActionText([string]$prompt) {
+    $i = $prompt.IndexOf("本镜头：")
+    if ($i -lt 0) { return "" }
+    $j = $prompt.IndexOf("出格状态：", $i)
+    if ($j -lt 0) { $j = $prompt.Length }
+    $seg = $prompt.Substring($i, $j - $i)
+    # 去掉共用的机位描述前缀，只比"动作本身"：取第一个分号之后
+    $k = $seg.IndexOf("；")
+    if ($k -ge 0 -and $k -lt $seg.Length - 1) { $seg = $seg.Substring($k + 1) }
+    return $seg
+}
+
+function Get-BigramSet([string]$text) {
+    $h = New-Object 'System.Collections.Generic.HashSet[string]'
+    $clean = $text -replace '\s', ''
+    for ($k = 0; $k -lt $clean.Length - 1; $k++) { [void]$h.Add($clean.Substring($k, 2)) }
+    return $h
+}
+
+function Test-TooSimilar($setA, $setB, [double]$threshold) {
+    if ($setA.Count -eq 0 -or $setB.Count -eq 0) { return $false }
+    $inter = 0
+    foreach ($x in $setA) { if ($setB.Contains($x)) { $inter++ } }
+    $union = $setA.Count + $setB.Count - $inter
+    return (([double]$inter / $union) -gt $threshold)
+}
+
 if (-not (Test-Path -LiteralPath $SpecPath)) { throw "spec not found: $SpecPath" }
 try {
     $spec = Get-Content -LiteralPath $SpecPath -Encoding utf8 -Raw | ConvertFrom-Json
@@ -47,10 +75,11 @@ catch {
 }
 
 # ---------- 1. 顶层与 anchors ----------
+# 风格是可选装饰项：故事板只作参考，衔接优先。缺失时按 realistic 兜底，不阻塞。
 $stylePresets = @("realistic", "line_bw", "graphite", "manga_tone", "cel2d", "guoman3d", "aaa_cg", "watercolor")
 $stylePreset = [string](Get-Prop $spec "style_preset")
 if (Test-Empty $stylePreset) {
-    Add-Fail "缺少 style_preset（开板先选风格：realistic/line_bw/graphite/manga_tone/cel2d/guoman3d/aaa_cg/watercolor）"
+    Add-Warn "未写 style_preset，按 realistic 兜底（风格不影响衔接校验）"
 }
 elseif ($stylePresets -notcontains $stylePreset) {
     Add-Fail "style_preset 非法值: $stylePreset（可选: $($stylePresets -join '/')）"
@@ -125,6 +154,9 @@ $prevId = $null
 $prevSide = @{}
 $prevRev = $false
 $prevScene = $true
+$prevFraming = ""
+$prevActionSet = $null
+$prevDelta = $null
 
 for ($i = 0; $i -lt $shots.Count; $i++) {
     $s = $shots[$i]
@@ -168,8 +200,63 @@ for ($i = 0; $i -lt $shots.Count; $i++) {
     }
     $prevOut = [string](Get-Prop $s "out_state")
     $prevId = $sid
-    $prevSide = $sideMap
-    $prevRev = $rev
+
+    # ---------- 衔接推进（故事板只作参考，格与格必须真的有推进） ----------
+    $framing = [string](Get-Prop $s "framing")
+    $framingLevel = @{ "大远景" = 1; "远景" = 2; "全景" = 3; "中景" = 4; "中近景" = 5; "近景" = 6; "特写" = 7; "大特写" = 8 }
+
+    # 相邻景别不连跳两级
+    if (-not $sceneBreak -and $prevFraming -ne "" -and $framingLevel.ContainsKey($framing) -and $framingLevel.ContainsKey($prevFraming)) {
+        $jump = [math]::Abs($framingLevel[$framing] - $framingLevel[$prevFraming])
+        if ($jump -ge 3) { Add-Fail "$sid 景别连跳两级以上：$prevFraming -> $framing（中间补一格过渡景别）" }
+    }
+
+    # delta 四量表：本格对上一格到底改变了什么
+    $deltaKeys = @("contact", "shift", "phase", "change")
+    $deltaObj = Get-Prop $s "delta"
+    if ($null -eq $deltaObj) {
+        Add-Fail "$sid 缺少 delta（衔接四量表 contact/shift/phase/change）"
+    }
+    else {
+        foreach ($dk in $deltaKeys) {
+            if (Test-Empty (Get-Prop $deltaObj $dk)) { Add-Fail "$sid delta.$dk 缺失或为空" }
+        }
+        $contact = [string](Get-Prop $deltaObj "contact")
+        $change = [string](Get-Prop $deltaObj "change")
+        $outState = [string](Get-Prop $s "out_state")
+        $pText = [string](Get-Prop $s "prompt")
+        if (-not (Test-Empty $pText)) {
+            if (-not (Test-Empty $contact) -and -not $pText.Contains($contact)) {
+                Add-Warn "$sid 接触点未在 prompt 原句出现: $contact"
+            }
+            # 可视结果必须落进 out_state：这一格到底改变了什么，要看得出
+            if (-not (Test-Empty $change) -and -not (Test-Empty $outState) -and -not $outState.Contains($change)) {
+                Add-Fail "$sid delta.change 未写进 out_state（可视结果必须落在出格状态里）: $change"
+            }
+        }
+        # 相邻两格变化量不允许四项全同（等于没推进）
+        if ($null -ne $prevDelta) {
+            $same = 0
+            foreach ($dk in $deltaKeys) {
+                if ([string](Get-Prop $deltaObj $dk) -ceq [string](Get-Prop $prevDelta $dk)) { $same++ }
+            }
+            if ($same -eq $deltaKeys.Count -and -not $sceneBreak) {
+                Add-Fail "$sid delta 四项与上一格完全相同（这一格没有推进）"
+            }
+        }
+        $prevDelta = $deltaObj
+    }
+
+    # 相邻两格动作描述过像 = 换了张图但事件没动
+    $actionText = Get-ActionText ([string](Get-Prop $s "prompt"))
+    $actionSet = Get-BigramSet $actionText
+    if ($null -ne $prevActionSet -and -not $sceneBreak -and -not (Test-Empty $actionText)) {
+        if (Test-TooSimilar $prevActionSet $actionSet 0.5) {
+            Add-Fail "$sid 与上一格动作描述高度重复（推进不足，改写本格动作或换景别/换机位）"
+        }
+    }
+    $prevActionSet = $actionSet
+    $prevFraming = $framing
 
     # 机位引用
     $cam = [string](Get-Prop $s "camera")
@@ -339,6 +426,9 @@ for ($i = 0; $i -lt $shots.Count; $i++) {
             }
         }
     }
+
+    $prevSide = $sideMap
+    $prevRev = $rev
 }
 
 # ---------- 输出 ----------
