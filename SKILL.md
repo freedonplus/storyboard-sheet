@@ -7,6 +7,39 @@ description: 把任意故事、脚本、短剧段落拆成镜头单，逐格生�
 
 稳定的关键不是临场发挥，而是固定这条链路：**内容卡 → 镜头单 → 静态校验 → 逐格生成 → 逐格质检 → 溯源回写 → 拼板叠字 → 整板终审交付**。每一步的规格都写死，换故事只换内容，不换结构。三道门卡死质量：**校验不过不开图、单格不过不拼板、原句不回写不交付**。
 
+## 出图模式（开板先定成本：逐格 or 单次整板）
+
+生图成本 = 生图调用次数。开板第一件事不是风格，是问清这一版要“能不能定稿”：
+
+| 模式 | `board_mode` | 生图调用 | 每格分辨率 | 适用 |
+|---|---|---|---|---|
+| 逐格生成再拼板 | `panel`（默认） | **N 次**（N=格数） | 单帧 1536×864，拼板后每格 1280×720 | 定稿、单帧交付、给视频做首帧、要挑格重出 |
+| 单次整板 | `single` | **1 次** | 整板一次出图，每格约为逐格的 1/3–1/2 | 快速过方案、内部看结构、成本敏感、只要“一张故事板” |
+
+判定规则：
+
+- 用户明确说“太贵／只要一张故事板／分镜一起生成／先看个大概” → 走 `single`，不要硬推逐格。
+- 用户要定稿、要单帧、要做视频首帧、要逐格重出某一格 → 走 `panel`。
+- 用户没表态 → 先问一句选哪种（一句话并列成本差异），不自己替他选贵的那个。
+- **`single` 不是降级糊弄**：衔接优先规则照样全程执行（`delta` 四量表照写，整板 Prompt 每格一行必须写出这一格比上一格多了什么），只是把“逐格核对”改成“整板一次核对”。
+
+## 单次整板模式（省成本走法，1 次生图）
+
+与逐格流程共用“内容卡 → 镜头单 → 静态校验”，从生图开始分叉：
+
+1. **补两个顶层字段**：`board_mode: "single"` + `board_prompt`（整板一次生成的完整 Prompt 原句，模板见 [prompt-templates.md](references/prompt-templates.md#三单次整板-prompt模板一次生图出全板)）。
+2. **静态校验**：仍然跑 `validate-shots.ps1`。`single` 模式下不校验逐格 `prompt`／`file`／参考图链与 `in_state` 逐字接力，改为校验 `board_prompt` 是否原句包含全部 anchors 与负向四段、每格 `delta` 是否齐全、相邻格 `delta` 是否四项全同、景别是否连跳。
+3. **一次生图**：`image_gen` 只提 **1 条** request，Prompt 就是 `board_prompt`，尺寸按整板比例给（3×2 → 8:3，3×3 → 16:9）。模型不会画文字，格内不要编号。
+4. **整板质检（一次看全板）**：同一人物是否跨格没变脸、同一场景墙脚踢脚线朝向是否一致、相邻格是否真有推进（答不出“后一格多了什么”就回改 `board_prompt` 对应格）、有没有格间渗色或把下一格服装画进上一格。
+5. **整板叠字**：用 `scripts/annotate-board.ps1` 把镜头号／时长／镜头名叠到每格底部（不做拼图、不改画面）。
+6. **交付**：整板 PNG + JPG 预览 + 镜头单 JSON（含 `board_prompt` 原句，可复现）。
+
+单次整板的软肋与对策：
+
+- **跨格一致性靠文字，不靠参考图链**。所以 `board_prompt` 里“统一人物／统一场景／统一光线”三句必须原句复制，且每格内容行要重复该格服装主色与发型，不能只写“换第二套”。
+- **每格细节密度低于逐格**。用户嫌某格糊、想单独放大，就对那一格走一次逐格重出（把 `board_mode` 改 `panel` 只做该格），不要整板重生成。
+- **格内可能出现文字或编号**。`board_prompt` 必须写死“格内不出现镜头号、时长、边框、任何文字”，编号一律交给 `annotate-board.ps1` 后期叠。
+
 ## 衔接优先（第一验收标准）
 
 故事板是给下游看的参考图，**风格可以随便，格与格接不上就废**。所以每格必须回答“相对上一格改了什么”，四个量缺一不可（写进该 shot 的 `delta`）：
@@ -49,9 +82,11 @@ description: 把任意故事、脚本、短剧段落拆成镜头单，逐格生�
 - 换风格视为新任务：重开首格、重跑校验，不复用旧格的参考图链。
 - **风格永远不是质量门**：风格没定、风格冲突、用户中途说“不在乎风格”，都不得阻塞出图；只影响 `anchors.style` 这一句。
 
-## 执行流程
+## 执行流程（逐格定稿路径）
 
-1. **填内容卡**。见 [prompt-templates.md](references/prompt-templates.md#一内容卡) 的字段：片名与题材、**风格预设（可选）**、角色锚点、场景、**站位卡**、**空间蓝图与机位表**、状态卡、光影与质感、画幅与格数、镜头单、禁止项。缺什么由 Agent 依据故事合理补全；风格最多问一次，不答按 `realistic` 走，其余细节不追问用户偏好。
+> 走单次整板（`board_mode: "single"`）时执行上面的「单次整板模式」六步，跳过下面的第 4、5、7 步逐格与拼板环节；第 1–3 步和第 8 步照做。
+
+1. **填内容卡**。见 [prompt-templates.md](references/prompt-templates.md#一内容卡) 的字段：片名与题材、**出图模式**、**风格预设（可选）**、角色锚点、场景、**站位卡**、**空间蓝图与机位表**、状态卡、光影与质感、画幅与格数、镜头单、禁止项。缺什么由 Agent 依据故事合理补全；出图模式按用户成本偏好定，风格最多问一次，不答按 `realistic` 走，其余细节不追问用户偏好。
 2. **拆镜头单**。按内容事件拆，不按字数或画面美观度拆；**一格一个可见推进**，相邻格不许只是“换个角度拍同一个动作”。写成 `assets/shots.example.json` 同构的 JSON，字段与命名严格照抄。所有跨格复用的句子集中写进顶层 `anchors` 块（**单一事实源**）：`style`／`characters`／`scene`／`blueprint`／`blocking`／`axis`／`lighting`／`props`／`negative`，各格 Prompt 从这些原句拼装，禁止各格自写变体。负向词拆成 `anchors.negative_parts` 四段（`base` 文字水印、`anatomy` 多肢与融合、`geometry` 穿模与悬浮、`separation` 两主体粘连）。机位表写进 `cameras`，每格必须有 `camera`／`in_state`／`out_state`／`delta`（接触点/位移/相位/可视结果）／`screen_side`（本格可见角色在画面 `left`／`center`／`right`）／`ref_binding`（每个图片槽位绑定的主体与用途）。
 3. **静态校验（不过不开图）**。先跑 `scripts/validate-shots.ps1`：必填字段、格数容量、镜头号连续、时间区间首尾相接、`in_state`/`out_state` 逐字接力、**衔接四量表 `delta` 齐全且 `change` 落在 `out_state`、相邻格 `delta` 不许四项全同、景别不连跳两级、相邻动作段 2-gram 相似度 ≤0.5**、每格 `prompt` 是否原句包含全部 anchors 与 `negative_parts` 四段、机位引用是否存在、`screen_side` 是否齐全且同场角色左右次序未翻转（翻转必须 `reverse_shot: true`）、`ref_binding` 是否一槽一主体、参考图链方向。**任何一项 FAIL 都先修 JSON，不进入生图**——这里报的“景别连跳”“动作重复”就是观众说的“接不上”。
 4. **逐格生成分镜画面**。一次 `image_gen` 调用内可提交同一场戏全部格的请求（`request_list` 多条），每格 1536×864。每格 Prompt 按 [prompt-templates.md](references/prompt-templates.md#二单格分镜图-prompt-模板正向块--负向块) 的模板写成**正向块＋负向块**：正向块十行按固定顺序（画幅／质感／主体绑定／角色锚点／场景／站位／屏幕侧位／比例锚与状态卡／入格状态与本镜动作／出格状态），随后补一行**「本格变化量：接触点…；位移…；相位…；可视结果…」**，负向块四段（`base`／`anatomy`／`geometry`／`separation`）。**锚点句、侧位短语、四段负向、逐槽绑定句一律逐格原句复制**。同一场戏按机位表顺序走**参考图链**：上一格成品作为参考图传给下一格，指令固定写“只参考空间布局、角色比例、地面关系与光线方向，不照抄构图”；换场断链重开首格。详见 [continuity.md](references/continuity.md)。
@@ -62,7 +97,8 @@ description: 把任意故事、脚本、短剧段落拆成镜头单，逐格生�
 
 ## 硬规则
 
-- **三道门**：镜头单静态校验不过 → 不生图；单格质检不过 → 不拼板；`prompt`/`seed`/`ref`/`ref_binding`/`screen_side`/`qa` 未回写 → 不交付。
+- **三道门**：镜头单静态校验不过 → 不生图；单格质检不过 → 不拼板；`prompt`/`seed`/`ref`/`ref_binding`/`screen_side`/`qa` 未回写 → 不交付。单次整板模式下以 `board_prompt` 代替逐格 `prompt`，以整板质检代替逐格质检。
+- **成本要先说清**：开板先定 `panel`（N 次生图，定稿）还是 `single`（1 次生图，参考级），不许默认用贵的那条路径；用户说贵就直接走 `single`。
 - **衔接优先于风格**：`delta` 四量表（接触点／位移／相位／可视结果）是本技能的第一硬指标；`style_preset` 只是装饰项，缺失按 `realistic` 兜底并只报 WARN，风格没定不得阻塞开图。
 - **一格必须有一格的新东西**：相邻格 `delta` 四项全同、或动作段相似度 >0.5、或 `change` 没落进 `out_state`，一律由校验器判 FAIL；只换机位不换事件不算推进。
 - **景别台阶制**：1 大远景／2 远景／3 全景／4 中景／5 中近景／6 近景／7 特写／8 大特写，相邻不许差 ≥3；要跳必须补一格过渡。
@@ -95,7 +131,8 @@ description: 把任意故事、脚本、短剧段落拆成镜头单，逐格生�
 | [references/output-spec.md](references/output-spec.md) | 格数与比例公式、分辨率、叠字版式、镜头单 JSON 字段规范（含 anchors 与溯源字段） |
 | [assets/shots.example.json](assets/shots.example.json) | 镜头单 JSON 完整示例（8 格 + 标题卡，含 anchors/cameras/溯源字段） |
 | [assets/demo.jpg](assets/demo.jpg) | 示例成品：上面这份镜头单拼出的整板预览（8 镜 + 标题卡，3×3，长边 2560 的 JPG） |
-| `scripts/validate-shots.ps1` | 镜头单静态校验：字段、接力、衔接四量表 `delta`、景别台阶、相邻动作相似度、锚点原句包含、机位引用、帧文件存在性 |
+| `scripts/annotate-board.ps1` | 单次整板叠字：在已生成的整板图上按网格叠镜头号／时长／镜头名，不改画面 |
+| `scripts/validate-shots.ps1` | 镜头单静态校验：字段、接力、衔接四量表 `delta`、景别台阶、相邻动作相似度、锚点原句包含、机位引用、帧文件存在性（`board_mode: single` 时改校验 `board_prompt`） |
 | `scripts/build-board.ps1` | 拼板叠字：读取 JSON，输出整板 PNG 与 JPG 预览 |
 
 两个脚本依赖 Windows 自带 PowerShell 与 System.Drawing，无需额外安装库。运行方式：
@@ -109,6 +146,9 @@ description: 把任意故事、脚本、短剧段落拆成镜头单，逐格生�
 
 # 拼板叠字
 & "<skill-dir>\scripts\build-board.ps1" -SpecPath <shots.json> -PanelsDir <帧目录> -OutputPath <整板.png> -PreviewPath <预览.jpg>
+
+# 单次整板：图已经是一整张，只叠字
+& "<skill-dir>\scripts\annotate-board.ps1" -BoardPath <整板原图.png> -SpecPath <shots.json> -OutputPath <整板_叠字.png> -PreviewPath <预览.jpg>
 ```
 
 拼板脚本按格子中心裁切填充（cover），不拉伸画面；帧尺寸与格子比例不一致时不会变形。

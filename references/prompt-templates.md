@@ -7,6 +7,7 @@
 | 字段 | 填写要求 |
 |---|---|
 | 片名与题材 | 一句话，例：忍者屋顶潜袭 · 夜战动作 |
+| 出图模式 | `panel` 逐格生成再拼板（N 次生图，质量最高，定稿用）／`single` 单次整板（1 次生图，参考级，过方案用）。用户提成本、只要一张板就走 `single`，见 [SKILL.md](../SKILL.md#出图模式开板先定成本逐格-or-单次整板) |
 | 风格预设 | 可选，开板最多问一次：`realistic` 原装写实（默认兜底）／`line_bw` 黑白线稿／`graphite` 灰阶素描／`manga_tone` 漫画网点／`cel2d` 赛璐璐／`guoman3d` 国漫 3D／`aaa_cg` 3A CG／`watercolor` 水彩淡彩，见 §七。**不选不影响开工，风格不参与衔接校验** |
 | 衔接四量表 | 每格相对上一格到底改了什么：`contact` 接触点／`shift` 位移（带数字）／`phase` 相位／`change` 可视结果（与 `out_state` 同文），收进该格 `delta`，见 [continuity.md](continuity.md#十五格间推进四量表衔接的唯一硬指标) |
 | 角色锚点 | 3–6 条不可变特征：服装配色、头巾/面罩样式、装备、体型。收进 `anchors.characters`，全组逐格原句复制 |
@@ -99,7 +100,46 @@
 
 一致性清单，每格必须原样复制：`anchors` 八句（仅 `cast` 内角色锚点）＋ `negative_parts` 四段 ＋ `screen_side` 侧位短语 ＋ `ref_binding` 逐槽绑定句 ＋ 画幅参数（1536×864）。校验脚本逐条做子串比对，改一个字都会 FAIL。
 
-## 三、整板九宫格 Prompt（快速看概念用）
+## 三、单次整板 Prompt 模板（一次生图出全板）
+
+成本最省的走法：只调用 1 次生图，让模型把 cols×rows 全部格画在同一张图上。每格分辨率约为逐格的 1/3–1/2，适合过方案、看结构、给甲方看节奏；要定稿再回逐格。
+
+```text
+横版 {cols}×{rows} 故事板拼板，整体比例 {cols×16}:{rows×9}（每格 16:9 等分），共 {N} 格：{cols} 列 {rows} 行，格与格之间用 6 像素深灰分隔线，整体深色背景。
+统一质感（全板唯一，不因格而异）：{anchors.style 原句}
+统一人物（每一格都是同一个人，脸型五官、{身份特征}全程不变）：{anchors.characters 原句，多角色用「；」连接}
+统一场景：{anchors.scene 原句}。{anchors.blueprint 原句}
+统一定位：{anchors.blocking 原句}。{anchors.axis 原句}
+统一光线：{anchors.lighting 原句}。{anchors.props 原句}
+全板统一版式：每格自成完整 16:9 画面，格内不出现镜头号、时长、边框、贴纸或任何文字；相邻格必须有可见推进（动作相位、接触点、距离或姿态至少变一项）。
+逐格内容（按阅读顺序 左→右、上→下）：
+第1格 {framing}｜{name}：{delta.change}；{服装/道具具体描述}。
+第2格 …
+…
+第N格 …
+负向（整板生效）：{negative_parts.base} {negative_parts.anatomy} {negative_parts.geometry} {negative_parts.separation}
+补充禁止：格与格之间不互相渗色、不把下一格的服装或动作提前画进上一格、不出现同一角色在一格里重复出镜、不出现镜像翻面（全板同一朝向的场景固定物）。
+```
+
+写法要点（单次整板最容易翻车的四处）：
+
+| 坑 | 对策 |
+|---|---|
+| 跨格变脸 | “统一人物”句整句照抄，且每格内容行必须重复该格发型与服装主色（“米白衬衫＋浅蓝牛仔＋低马尾”），只写“换第二套”必翻 |
+| 场景翻面 | “统一场景”里写死一个朝向性固定物（踢脚线、门框、停止线），并加“不镜像翻面”，否则左右格墙面会反对称 |
+| 格间渗色 | 负向明确写“不互相渗色、不提前画下一格服装”；格与格之间给 6px 分隔线 |
+| 格内文字 | 固定写“不出现镜头号、时长、边框、任何文字”，编号交给 `annotate-board.ps1` 后期叠，模型写字必糊 |
+
+整板尺寸与比例：`{cols}×16 : {rows}×9`。3×3 → 16:9（用 3072×1728 请求）；3×2 → 8:3（用 3072×1152）；2×3 → 32:27（用 2048×1728）。工具实际返回的像素可能小于请求值，按返回尺寸叠字即可（`annotate-board.ps1` 按图实际宽高切格）。
+
+镜头单里怎么落：顶层加 `board_mode: "single"` 与 `board_prompt`（上面这段完整原句），各 shot 保留 `id`/`time`/`name`/`camera`/`framing`/`cut_in`/`cut_out`/`in_state`/`out_state`/`delta`/`screen_side`，`file`/`prompt`/`ref`/`ref_binding` 可省。校验与叠字命令：
+
+```powershell
+& "<skill-dir>\scripts\validate-shots.ps1" -SpecPath <shots.json>
+& "<skill-dir>\scripts\annotate-board.ps1" -BoardPath <整板原图.png> -SpecPath <shots.json> -OutputPath <整板_叠字.png> -PreviewPath <预览.jpg>
+```
+
+## 三之二、整板九宫格 Prompt（纯概念稿）
 
 一次出图适合过方案，不适合定稿：跨格人物容易变脸、格内细节被压缩。
 

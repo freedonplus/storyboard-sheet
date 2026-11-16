@@ -35,6 +35,15 @@
 
 **第一验收标准是衔接，不是风格。** 故事板只作参考，风格可以随手定，但格与格必须真有推进：每格写四量表 `delta`（接触点／位移／相位／可视结果），`change` 必须落进 `out_state`；相邻格 `delta` 四项全同判 FAIL，景别连跳两级判 FAIL，相邻动作段相似度 > 0.5 判 FAIL。这三条量化出来的就是观众嘴里的“接不上”。
 
+## 两种出图模式（先看成本）
+
+| 模式 | `board_mode` | 生图调用 | 每格分辨率 | 用在 |
+|---|---|---|---|---|
+| 逐格生成再拼板 | `panel`（默认） | **N 次**（N=格数） | 单帧 1536×864 | 定稿、单帧交付、给视频做首帧、要逐格重出 |
+| 单次整板 | `single` | **1 次** | 整板一次出图，每格约逐格的 1/3–1/2 | 快速过方案、只看结构与节奏、成本敏感 |
+
+`single` 模式只多两个顶层字段：`board_mode: "single"` 与 `board_prompt`（整板整段 Prompt 原句，每格一行、必须写出该格比上一格多了什么）。生成后不用拼图，直接 `annotate-board.ps1` 把镜头号／时长／镜头名叠到每格底部。衔接优先规则在两种模式下都照跑，只是 `single` 把“逐格核对”换成“整板一次核对”。
+
 **风格是可选装饰项**：开板最多问一次——原装写实（默认兜底）／黑白线稿／黑白灰阶素描／日式漫画网点／2D 赛璐璐／国漫 3D／3A 游戏 CG／水彩淡彩。不选不影响开工，`style_preset` 缺失只报 WARN，风格只决定质感句、色板、阴影方式与负向补充四件套。
 
 三道门卡死质量：
@@ -55,8 +64,9 @@ assets/
   demo.jpg                    示例成品：8 镜 + 标题卡的整板预览
   shots.example.json          完整示例（8 格 + 标题卡，含 anchors/cameras/溯源字段）
 scripts/
-  validate-shots.ps1          镜头单静态校验（开图前与拼板前各跑一次）
+  validate-shots.ps1          镜头单静态校验（开图前与拼板前各跑一次；single 模式校验 board_prompt）
   build-board.ps1             拼板叠字（cover 裁切不变形，输出 PNG + JPG 预览）
+  annotate-board.ps1          单次整板叠字（在一整张板上按网格叠镜头号/时长/镜头名）
 ```
 
 ## 用法
@@ -72,8 +82,11 @@ scripts/
 # 3. 拼板前：连帧文件一起校验（缺帧直接失败）
 .\scripts\validate-shots.ps1 -SpecPath .\shots.json -PanelsDir .\panels -RequirePanels
 
-# 4. 拼板叠字
+# 4. 拼板叠字（逐格模式）
 .\scripts\build-board.ps1 -SpecPath .\shots.json -PanelsDir .\panels -OutputPath .\board.png -PreviewPath .\board.jpg
+
+# 4'. 单次整板（board_mode=single）：图已经是一整张，只叠字
+.\scripts\annotate-board.ps1 -BoardPath .\board_raw.png -SpecPath .\shots.json -OutputPath .\board.png -PreviewPath .\board.jpg
 ```
 
 校验输出 `WARN`（不阻塞）与 `FAIL`（阻塞，退出码 1）两级；`WARN` 涵盖 `seed`/`qa` 待回写、`style_preset` 缺失按写实兜底、`delta.contact` 未进 Prompt 等提醒项；`FAIL` 涵盖锚点缺失、接力断裂、衔接四量表不全、景别连跳、动作雷同、侧位翻转、槽位没绑主体。
@@ -97,4 +110,6 @@ scripts/
 | 穿模、粘连、多肢 | 正向主体分离句（间隙＋前后遮挡＋独立接触阴影）＋ `negative_parts` 四段负向 |
 | 只写"不要穿模"却没效果 | 负向拆 `base`/`anatomy`/`geometry`/`separation` 四段，校验脚本强制每格原句包含 |
 | 风格跑偏、一格彩色一格黑白 | 风格可选：`style_preset` 单选一次＋四件套锁死，标题卡跟同一预设；缺失按 realistic 兜底，不拦流程 |
+| 分镜多、逐格生成太贵 | `board_mode: "single"` + `board_prompt` 走一次生图，`annotate-board.ps1` 后期叠字 |
+| 单次整板跨格变脸/翻面 | “统一人物/统一场景”原句照抄＋每格重复发型服装主色＋写入“不镜像翻面” |
 | 无法复现 | `prompt`/`seed`/`ref`/`qa` 逐格回写，JSON 即溯源档案 |

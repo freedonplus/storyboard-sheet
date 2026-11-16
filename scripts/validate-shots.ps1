@@ -90,6 +90,19 @@ $rows = Get-Prop $spec "rows"
 if (Test-Empty $cols) { Add-Fail "缺少 cols" }
 if (Test-Empty $rows) { Add-Fail "缺少 rows" }
 
+# 出图模式：panel = 逐格生成再拼板（质量最高，N 次生图）；single = 一次整板（1 次生图，成本最低）
+$boardMode = [string](Get-Prop $spec "board_mode")
+if (Test-Empty $boardMode) { $boardMode = "panel" }
+if (@("panel", "single") -notcontains $boardMode) {
+    Add-Fail "board_mode 只能是 panel（逐格）或 single（单次整板），实为 $boardMode"
+}
+$boardPrompt = [string](Get-Prop $spec "board_prompt")
+if ($boardMode -eq "single") {
+    if (Test-Empty $boardPrompt) {
+        Add-Fail "board_mode=single 但缺少 board_prompt（整板一次生成的完整 Prompt 原句）"
+    }
+}
+
 $anchors = Get-Prop $spec "anchors"
 $anchorKeys = @("style", "scene", "blueprint", "blocking", "axis", "lighting", "props", "negative")
 if ($null -eq $anchors) {
@@ -147,6 +160,10 @@ if (-not (Test-Empty $cols) -and -not (Test-Empty $rows)) {
 }
 
 $requiredShot = @("id", "time", "name", "file", "camera", "framing", "cut_in", "cut_out", "in_state", "out_state", "prompt")
+if ($boardMode -eq "single") {
+    # 单次整板：没有单帧文件，也没有单格 prompt，全部信息汇总在 board_prompt
+    $requiredShot = @("id", "time", "name", "camera", "framing", "cut_in", "cut_out", "in_state", "out_state")
+}
 $shotIds = @{}
 $prevEnd = $null
 $prevOut = $null
@@ -224,7 +241,7 @@ for ($i = 0; $i -lt $shots.Count; $i++) {
         $contact = [string](Get-Prop $deltaObj "contact")
         $change = [string](Get-Prop $deltaObj "change")
         $outState = [string](Get-Prop $s "out_state")
-        $pText = [string](Get-Prop $s "prompt")
+        $pText = if ($boardMode -eq "single") { $boardPrompt } else { [string](Get-Prop $s "prompt") }
         if (-not (Test-Empty $pText)) {
             if (-not (Test-Empty $contact) -and -not $pText.Contains($contact)) {
                 Add-Warn "$sid 接触点未在 prompt 原句出现: $contact"
@@ -248,14 +265,17 @@ for ($i = 0; $i -lt $shots.Count; $i++) {
     }
 
     # 相邻两格动作描述过像 = 换了张图但事件没动
-    $actionText = Get-ActionText ([string](Get-Prop $s "prompt"))
-    $actionSet = Get-BigramSet $actionText
-    if ($null -ne $prevActionSet -and -not $sceneBreak -and -not (Test-Empty $actionText)) {
-        if (Test-TooSimilar $prevActionSet $actionSet 0.5) {
-            Add-Fail "$sid 与上一格动作描述高度重复（推进不足，改写本格动作或换景别/换机位）"
+    # 单次整板没有逐格 prompt，动作相似度在 board_prompt 里无法逐格切分，改为提示人工终审核对
+    if ($boardMode -eq "panel") {
+        $actionText = Get-ActionText ([string](Get-Prop $s "prompt"))
+        $actionSet = Get-BigramSet $actionText
+        if ($null -ne $prevActionSet -and -not $sceneBreak -and -not (Test-Empty $actionText)) {
+            if (Test-TooSimilar $prevActionSet $actionSet 0.5) {
+                Add-Fail "$sid 与上一格动作描述高度重复（推进不足，改写本格动作或换景别/换机位）"
+            }
         }
+        $prevActionSet = $actionSet
     }
-    $prevActionSet = $actionSet
     $prevFraming = $framing
 
     # 机位引用
@@ -264,8 +284,9 @@ for ($i = 0; $i -lt $shots.Count; $i++) {
         Add-Fail "$sid 引用的机位 $cam 不在 cameras 表中"
     }
 
-    # prompt 原句包含 anchors（高溯源硬校验）
+    # prompt 原句包含 anchors（高溯源硬校验）；单次整板用 board_prompt 做同一套比对
     $prompt = [string](Get-Prop $s "prompt")
+    if ($boardMode -eq "single") { $prompt = $boardPrompt }
     if (-not (Test-Empty $prompt) -and $null -ne $anchors) {
         foreach ($k in $anchorKeys) {
             $av = [string](Get-Prop $anchors $k)
@@ -288,11 +309,19 @@ for ($i = 0; $i -lt $shots.Count; $i++) {
             }
         }
         # 出格状态应写进 prompt；入格状态首格/换场格可省
+        # 单次整板里整板 Prompt 是逐格一行，允许缩写成“该格可视结果”，因此降为 WARN
         $outState = [string](Get-Prop $s "out_state")
         if (-not (Test-Empty $outState) -and -not $prompt.Contains($outState)) {
-            Add-Fail "$sid prompt 未包含 out_state 原句"
+            if ($boardMode -eq "single") {
+                if (-not $prompt.Contains([string](Get-Prop $deltaObj "change"))) {
+                    Add-Warn "$sid board_prompt 里找不到本格可视结果（delta.change），这一格的推进可能没写进整板 Prompt"
+                }
+            }
+            else {
+                Add-Fail "$sid prompt 未包含 out_state 原句"
+            }
         }
-        if ($i -gt 0 -and -not $sceneBreak) {
+        if ($boardMode -eq "panel" -and $i -gt 0 -and -not $sceneBreak) {
             $inState2 = [string](Get-Prop $s "in_state")
             if (-not (Test-Empty $inState2) -and -not $prompt.Contains($inState2)) {
                 Add-Fail "$sid prompt 未包含 in_state 原句"
@@ -300,9 +329,12 @@ for ($i = 0; $i -lt $shots.Count; $i++) {
         }
     }
 
-    # 参考图链
+    # 参考图链（仅逐格模式；单次整板没有格间参考链）
     $ref = Get-Prop $s "ref"
-    if ($i -eq 0 -or $sceneBreak) {
+    if ($boardMode -eq "single") {
+        # 单次整板不校验参考图链
+    }
+    elseif ($i -eq 0 -or $sceneBreak) {
         if (-not (Test-Empty $ref)) { Add-Warn "$sid 是首格/换场格，ref 应为空（断链重开），实为 $ref" }
     }
     else {
@@ -371,7 +403,14 @@ for ($i = 0; $i -lt $shots.Count; $i++) {
         $zh = @{ "left" = "左侧"; "center" = "中部"; "right" = "右侧" }
         foreach ($nm in $sideMap.Keys) {
             $phrase = "${nm}在画面$($zh[$sideMap[$nm]])"
-            if (-not $prompt.Contains($phrase)) { Add-Fail "$sid prompt 未含侧位句: $phrase" }
+            if (-not $prompt.Contains($phrase)) {
+                if ($boardMode -eq "single") {
+                    Add-Warn "$sid 整板 Prompt 未单独写出侧位句 $phrase（单次整板由轴线句统一约束，建议补一句更稳）"
+                }
+                else {
+                    Add-Fail "$sid prompt 未含侧位句: $phrase"
+                }
+            }
         }
         if ($null -ne $negParts) {
             foreach ($nk in $negKeys) {
@@ -386,7 +425,10 @@ for ($i = 0; $i -lt $shots.Count; $i++) {
     # ---------- 参考图槽位绑定（防两个主体的参考搞反） ----------
     $rbPropInfo = $s.PSObject.Properties["ref_binding"]
     if ($null -eq $rbPropInfo) {
-        Add-Fail "$sid 缺少 ref_binding（首格无参考图时写空数组）"
+        # 单次整板可以完全不传参考图，此时不要求逐格 ref_binding
+        if ($boardMode -ne "single") {
+            Add-Fail "$sid 缺少 ref_binding（首格无参考图时写空数组）"
+        }
     }
     else {
         $rb = @()

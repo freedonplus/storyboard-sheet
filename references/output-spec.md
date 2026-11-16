@@ -18,6 +18,7 @@
 
 - 单帧生成：1536×864（16:9）。
 - 格子尺寸：1280×720；整板 3×3 = 3840×2160。
+- 单次整板（`board_mode: single`）：一次请求整板比例，3×3 用 3072×1728、3×2 用 3072×1152；工具实际返回像素通常小于请求值，叠字按图实际宽高等分切格，不缩放、不补边。
 - 交付：PNG 原图（全分辨率）＋ JPG 预览（长边 2560，质量 88）。
 - 3×4 以上超大板可把格子降到 960×540，整板保持整数像素。
 
@@ -37,6 +38,8 @@
 ```json
 {
   "schema": 2,
+  "board_mode": "panel",
+  "board_prompt": null,
   "style_preset": "realistic",
   "title": "片名",
   "subtitle": "分镜故事板  STORYBOARD",
@@ -106,6 +109,9 @@
 ### 字段说明
 
 拼板必需（build-board.ps1 读取）：
+
+- `board_mode`：`panel`（默认，逐格生成再拼板，N 次生图）／`single`（一次生图出整板，1 次生图）。写 `single` 时必须同时给 `board_prompt`，此时各 shot 的 `file`/`prompt`/`ref`/`ref_binding` 可省，叠字改用 `annotate-board.ps1`。判定与流程见 [SKILL.md](../SKILL.md#单次整板模式省成本走法1-次生图)。
+- `board_prompt`：`single` 模式下的整板 Prompt 原句（模板见 [prompt-templates.md](prompt-templates.md#三单次整板-prompt模板一次生图出全板)）。校验脚本要求它原句包含全部 anchors 与负向四段，并逐格核对 `delta.change` 有没有落进去。
 
 - `id`：镜头号，全片连续，`SH001` 起。
 - `time`：成片时间区间，用 `-` 连接，秒保留一位小数；相邻镜头区间必须首尾相接（上一格终点 = 下一格起点）。
