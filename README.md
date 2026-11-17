@@ -48,25 +48,39 @@
 
 三道门卡死质量：
 
-1. **校验不过不开图** —— `validate-shots.ps1` 对镜头单做静态校验（字段、逐字接力、衔接四量表、景别台阶、动作相似度、锚点原句包含、机位引用、时间连续性），任何 FAIL 先修 JSON。
+1. **校验不过不开图** —— `validate-shots.ps1` 对镜头单做静态校验（字段、逐字接力、衔接四量表、景别台阶、动作相似度、锚点原句包含、机位引用、时间连续性），任何 FAIL 先修 JSON。开图前每格 Prompt 还要过**六维体检**（主体辨识／光学具体／介质可信／空间站得住／时间有推进／词库可溯源，总分 30、交付线 26），低分先修词。
 2. **单格不过不拼板** —— 每条 Prompt 的锚点句从顶层 `anchors` 块（单一事实源）原句复制；每格出图后过十三条质检清单，不合格原地重出（该出场的角色缺席直接判废）。
 3. **原句不回写不交付** —— 每格定稿后把 `prompt` 原句、`seed`、`ref` 参考图链、`qa` 结论回写镜头单，任何人拿 JSON 可逐格复现、定位穿帮责任句。
+
+## 动态化模式（静态板 → 视频提示词，可选）
+
+用户要"让分镜动起来／变成拍摄脚本"时，在静态板过质检门之后，把每格展开为一条视频提示词：**该格成品帧 = 首帧参考，`delta` 四量表 = 事件 beat，`in_state`/`out_state` = 起止状态**，按 Seedance 2.0（`@图片N` + 负面四段）或 MiniMax H3（Preserve 先保留后变化 + Avoid 转正 + 音频三轨）双平台出稿，回写 `video_prompts` 字段。细则见 [references/animation.md](references/animation.md)。
+
+## 词库与联动
+
+- **atlas 图集词库**：`master/prompt-atlas.json`（279 槽位 / 7400+ 枚举选项）+ `scripts/atlas-lookup.ps1`，写 `anchors` 前先取词，自创专名 ≤ 20%。用法见 [references/atlas.md](references/atlas.md)。
+- **联动 cinematic-prompt-master**：本技能管多格分镜与拼板；那边管单条提示词写作、六维升维与平台改写。站位卡、atlas 词库、六维体检评分卡（30 分 / 26 线）三样两边同源同表；从那边模式 G 出的镜头单可直接回本技能拼板。
 
 ## 目录结构
 
 ```
 SKILL.md                      技能入口：执行流程与硬规则
 references/
-  prompt-templates.md         内容卡、单格 Prompt 模板、质检门、失败清单
+  prompt-templates.md         内容卡、单格 Prompt 模板、六维体检、质检门、失败清单
   continuity.md               空间蓝图、轴线、机位表、尾态首态接力、参考图链、溯源回写
   output-spec.md              格数比例公式、像素与叠字版式、镜头单 JSON 字段规范
+  atlas.md                    atlas 词库用法：取词路由、检索命令、组句纪律
+  animation.md                动态化模式：静态格 → Seedance/H3 双平台视频提示词
 assets/
   demo.jpg                    示例成品：8 镜 + 标题卡的整板预览
   shots.example.json          完整示例（8 格 + 标题卡，含 anchors/cameras/溯源字段）
+master/
+  prompt-atlas.json           atlas 词库实体（279 槽位 / 7400+ 枚举选项）
 scripts/
   validate-shots.ps1          镜头单静态校验（开图前与拼板前各跑一次；single 模式校验 board_prompt）
   build-board.ps1             拼板叠字（cover 裁切不变形，输出 PNG + JPG 预览）
   annotate-board.ps1          单次整板叠字（在一整张板上按网格叠镜头号/时长/镜头名）
+  atlas-lookup.ps1            atlas 词库检索（-Outline / -Path / -Query）
 ```
 
 ## 用法
@@ -112,4 +126,6 @@ scripts/
 | 风格跑偏、一格彩色一格黑白 | 风格可选：`style_preset` 单选一次＋四件套锁死，标题卡跟同一预设；缺失按 realistic 兜底，不拦流程 |
 | 分镜多、逐格生成太贵 | `board_mode: "single"` + `board_prompt` 走一次生图，`annotate-board.ps1` 后期叠字 |
 | 单次整板跨格变脸/翻面 | “统一人物/统一场景”原句照抄＋每格重复发型服装主色＋写入“不镜像翻面” |
+| 锚点句里出现自造形容词 | 先回 atlas 词库取词（`atlas-lookup.ps1`），自创专名 ≤ 20% 且必须可被画面验证 |
+| 要每格动起来 / 出拍摄脚本 | 动态化模式（animation.md）：过质检门的格 → Seedance/H3 双平台视频提示词 |
 | 无法复现 | `prompt`/`seed`/`ref`/`qa` 逐格回写，JSON 即溯源档案 |

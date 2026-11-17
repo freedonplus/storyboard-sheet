@@ -60,6 +60,39 @@ description: 把任意故事、脚本、短剧段落拆成镜头单，逐格生�
 - `contact` 未在 `prompt` 原句出现 → WARN：说明动作句还没落到具体接触点。
 - `out_state` / `in_state` 逐字相等（位置／朝向／动作相位／接触点／表情强度五项），断链必须标 `scene_break: true`。
 
+## 取词：atlas 图集词库（写 anchors 前先查）
+
+`anchors` 里的具名词**先回 atlas 取，再考虑自创**。词库实体在 `master/prompt-atlas.json`（279 个可填槽位、7400+ 枚举选项，与主文档分卷挂钩），检索脚本 `scripts/atlas-lookup.ps1`，取词路由与字段协议见 [atlas.md](references/atlas.md)：
+
+- 角色/表情/动作 → 「主体」「表情情绪大典」「动作与肢体语言」；场景/材质 → 「场景美术」「质感与材质成像」；光位 → 「灯光层」「打光参数配方」；质感句 → 「①风格母语」「调色层」；负向补充 → 「负面词」；动态化运镜 → 「运动与时间_视频」。
+- 三条命令：`-Outline` 定位分卷、`-Path "灯光层"` 取某节点全部选项、`-Query "轮廓光" -Path "灯光层"` 跨库搜。
+- atlas 选项是候选词不是成品句，组句仍按本技能规则（固定物坐标、侧位短语逐字、状态卡语义）；自创专名 ≤ 全篇 20% 且必须可被画面验证。
+
+## 动态化模式（可选：静态板 → 双平台视频提示词）
+
+触发语：用户要"让分镜动起来 / 每格出视频提示词 / 变成拍摄脚本"。前提：**这条板已走完静态流程且每格过质检门**；质检不过的格不许动态化。细则在 [animation.md](references/animation.md)：
+
+- 一格一镜一视频：该格成品帧 = 首帧参考（Seedance `@图片1` / H3 I2VA 首帧），`delta` 四量表 = 这条视频的事件 beat，`in_state`/`out_state` = 起止状态，`camera` = 唯一运镜线索。
+- 双平台壳：Seedance 2.0 用 `@图片N` + 负面四段原句；MiniMax H3 用「Preserve 先保留、后变化 + 一句 Avoid 转正 + 音频三轨」。
+- 溯源照旧：每 shot 回写 `video_prompts`（`seedance`/`h3`/`duration`/`ref` 原句），可逐镜复现。
+- 时长按 `phase` 定（起势收势 4–6s、顶点 6–8s、连续动作 10–15s），默认 6 秒起评；装不下就拆格，不硬塞。
+
+## 与 cinematic-prompt-master 的联动（两技能分工与格式互通）
+
+| 任务 | 用谁 |
+|---|---|
+| 多格分镜、拼板、逐格定稿、单次整板 | **本技能** |
+| 单条提示词写作 / 烂稿升维（六维体检 + 五级手术）/ 平台改写（换壳不换词） | **cinematic-prompt-master** |
+| "先分镜、再要每个镜头的视频提示词" | 本技能出板过质检 → 动态化模式（references/animation.md）展开双平台 |
+| "从一条提示词扩成系列镜头再拼板" | cinematic-prompt-master 模式 G（分镜站位）出镜头单 → 回本技能拼板与溯源 |
+
+格式互通口径（两边必须一致，改任何一边都要同步另一边）：
+
+- **站位卡同源**：本技能内容卡的站位卡 / `anchors.blueprint`（固定物坐标、轴线、机位表、screen_side、比例锚）= cinematic-prompt-master `references/13-staging-and-axis.md` 的站位卡模板；那边是从这里移植后改写成提示词语言的。
+- **atlas 同源**：两边共用同一份 `master/prompt-atlas.json`（本技能的是直接副本）；升级词库时两边一起换。
+- **六维体检同表**：本技能 [prompt-templates.md](references/prompt-templates.md#四之二单格-prompt-六维体检开图前打分不过先修词) 与那边 SKILL.md 的"第 0 刀"是同一张评分卡（30 分 / 交付线 26）。
+- **交付契约同口径**：双平台视频提示词一律"先定妆块、后提示词块"，全部 text 代码块。
+
 ## 风格预设（可选，开板问一次，不拦流程）
 
 开板可以问一次风格，但**不回答不影响开工**：风格只决定质感句、色板、阴影方式与负向补充，不决定衔接。用户没提风格或说“你定” → 按 `realistic` 兜底直接做，不追问第二遍，不因为没定风格卡住流程（`style_preset` 缺失只报 WARN）：
@@ -98,6 +131,9 @@ description: 把任意故事、脚本、短剧段落拆成镜头单，逐格生�
 ## 硬规则
 
 - **三道门**：镜头单静态校验不过 → 不生图；单格质检不过 → 不拼板；`prompt`/`seed`/`ref`/`ref_binding`/`screen_side`/`qa` 未回写 → 不交付。单次整板模式下以 `board_prompt` 代替逐格 `prompt`，以整板质检代替逐格质检。
+- **开图前先打分**：单格 Prompt 过六维体检（见 [prompt-templates.md](references/prompt-templates.md#四之二单格-prompt-六维体检开图前打分不过先修词)），低于 26 分先修词再开图，不带低分 Prompt 烧生图额度。
+- **词先回 atlas**：`anchors` 组句先查 `master/prompt-atlas.json`（见 [atlas.md](references/atlas.md)），自创专名 ≤ 全篇 20% 且必须具名、可被画面验证。
+- **动态化不许跳门**：没过静态质检门的格禁止展开视频提示词；动态化的接力句与溯源照静态规则逐字执行。
 - **成本要先说清**：开板先定 `panel`（N 次生图，定稿）还是 `single`（1 次生图，参考级），不许默认用贵的那条路径；用户说贵就直接走 `single`。
 - **衔接优先于风格**：`delta` 四量表（接触点／位移／相位／可视结果）是本技能的第一硬指标；`style_preset` 只是装饰项，缺失按 `realistic` 兜底并只报 WARN，风格没定不得阻塞开图。
 - **一格必须有一格的新东西**：相邻格 `delta` 四项全同、或动作段相似度 >0.5、或 `change` 没落进 `out_state`，一律由校验器判 FAIL；只换机位不换事件不算推进。
@@ -126,11 +162,15 @@ description: 把任意故事、脚本、短剧段落拆成镜头单，逐格生�
 
 | 文件 | 职责 |
 |---|---|
-| [references/prompt-templates.md](references/prompt-templates.md) | 内容卡、单格 Prompt 模板、整板九宫格 Prompt、动作与运镜写法、单格质检门、失败清单 |
+| [references/prompt-templates.md](references/prompt-templates.md) | 内容卡、单格 Prompt 模板、整板九宫格 Prompt、动作与运镜写法、六维体检（开图前打分）、单格质检门、失败清单、风格预设表 |
 | [references/continuity.md](references/continuity.md) | 衔接卡：空间蓝图、轴线规则、机位表、尾态首态接力、参考图链、比例锚、溯源回写、自查清单 |
 | [references/output-spec.md](references/output-spec.md) | 格数与比例公式、分辨率、叠字版式、镜头单 JSON 字段规范（含 anchors 与溯源字段） |
+| [references/atlas.md](references/atlas.md) | atlas 图集词库用法：取词路由、字段协议、检索命令、组句纪律 |
+| [references/animation.md](references/animation.md) | 动态化模式：静态格 → Seedance 2.0 / MiniMax H3 双平台视频提示词、映射表、动态质检、失败清单 |
 | [assets/shots.example.json](assets/shots.example.json) | 镜头单 JSON 完整示例（8 格 + 标题卡，含 anchors/cameras/溯源字段） |
 | [assets/demo.jpg](assets/demo.jpg) | 示例成品：上面这份镜头单拼出的整板预览（8 镜 + 标题卡，3×3，长边 2560 的 JPG） |
+| `master/prompt-atlas.json` | atlas 词库实体（279 槽位 / 7400+ 枚举选项，与 cinematic-prompt-master 同源） |
+| `scripts/atlas-lookup.ps1` | atlas 检索：`-Outline` / `-Path` / `-Query` |
 | `scripts/annotate-board.ps1` | 单次整板叠字：在已生成的整板图上按网格叠镜头号／时长／镜头名，不改画面 |
 | `scripts/validate-shots.ps1` | 镜头单静态校验：字段、接力、衔接四量表 `delta`、景别台阶、相邻动作相似度、锚点原句包含、机位引用、帧文件存在性（`board_mode: single` 时改校验 `board_prompt`） |
 | `scripts/build-board.ps1` | 拼板叠字：读取 JSON，输出整板 PNG 与 JPG 预览 |
